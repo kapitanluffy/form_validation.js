@@ -18,14 +18,15 @@ var form_validation = new (function() {
 
 	var self = this;
 	var fvuuid = 0;
-
 	this.rules = {}
 
 	this.set_rule = function(name, rule, object) {
+
 		if( self.rules[name] == undefined){
-			self.rules[name] = {};
+			self.rules[name] = [];
 		}
-		self.rules[name][rule] = object;
+
+		self.rules[name].push(rule);
 	}
 
 	/* main method */
@@ -34,41 +35,65 @@ var form_validation = new (function() {
 		try {
 			var callback = callback || function() {};
 			var selector = selector || 'body';
-			var errors = [];
+			var errors = {};
 
-			for(var input in self.rules) {
+			for(var inputs in self.rules) {
 
-				for(var ktn in self.rules[input]) {
-					var input_selector = $(selector).find('[name="'+ input +'"]');
-					var rule_object = self.rules[input];
+				$(self.rules[inputs]).each(function(i,input){
+					var input_selector = $(selector).find('[name="'+ inputs +'"]');
+					var rule_object = input;
+					var rule_name = input['name'];
+
+					// console.log(self.rules);
+					if(typeof rule_name == 'function') {
+						rule_name = 'function';
+					}
 
 					$(input_selector).each(function(i,e){
+						if(errors[inputs]) {
+							return;
+						}
+
 						var result = true;
-						var uuid = 'fv-' + ++fvuuid;
-						$(e).data('fvuuid', uuid);
 						$(e).addClass('fv-item');
-						
-						switch(ktn.toLowerCase()) {
+
+						/* generate uuid for this element */
+						var uuid = $(e).data('fvuuid');
+						if( uuid == undefined) {
+							uuid = 'fv-' + inputs.replace(/\[\]/,'') + '-' + ++fvuuid;
+							$(e).data('fvuuid', uuid);
+						}
+
+						/* run the rules */
+						switch(rule_name) {
 							case 'required':	
-								rule_object[ktn]['result'] = is_required(e);
+								rule_object['result'] = is_required(e);
+							break;
+							case 'valid_date':
+								rule_object['result'] = is_valid_date(e);
 							break;
 							case 'number':
-								rule_object[ktn]['result'] = is_number(e);
+								rule_object['result'] = is_number(e);
+							break;
+							case 'number_no_zero':
+								rule_object['result'] = is_number_no_zero(e);
+							break;
+							case 'function':
+								rule_object['result'] = input['name'](e);
 							break;
 						}
 
-						if(! rule_object[ktn]['result']) {
-							rule_object[ktn]['name'] = ktn.toLowerCase();
-
-							var error = { 'element': e, 'rule': rule_object[ktn], 'uuid': uuid }
-							errors.push(error);
+						if(typeof(rule_object['callback']) == 'function') {
+							rule_object['callback'](e, rule_object, uuid);
 						}
 
-						if(typeof(rule_object[ktn]['callback']) == 'function') {
-							rule_object[ktn]['callback'](e, rule_object[ktn], uuid);
+						if(! rule_object['result']) {
+							var error = { 'element': e, 'rule': rule_object, 'uuid': uuid }
+							errors[inputs] = error;
 						}
+
 					});
-				}
+				});
 			}
 
 			errors.length = count(errors);
@@ -97,6 +122,17 @@ var form_validation = new (function() {
 		var regex = /[^0-9\.]/i
 		var value = $(selector).val();
 		return !regex.test(value)
+	}
+
+	function is_number_no_zero(selector) {
+		var regex = /[^1-9\.]/i
+		var value = $(selector).val();
+		return !regex.test(value)
+	}
+
+	function is_valid_date(selector) {
+
+		return (new Date($(selector).val()) != 'Invalid Date')
 	}
 
 	/* utility methods */
